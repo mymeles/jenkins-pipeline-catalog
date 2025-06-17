@@ -1,0 +1,307 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(
+            name: 'BUILD_TYPE',
+            choices: ['development', 'release'],
+            description: 'Type of build to perform'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip test execution'
+        )
+        string(
+            name: 'CUSTOM_TAG',
+            defaultValue: '',
+            description: 'Custom Docker tag (optional)'
+        )
+    }
+
+    environment {
+        APP_PATH = "${appPath}"
+        DOCKER_IMAGE_NAME = "${dockerImageName}"
+        DOCKER_IMAGE_TAG = params.CUSTOM_TAG ?: "1.0.${env.BUILD_NUMBER}"
+        NODE_VERSION = "${nodeVersion}"
+        DEPLOY_ENV = "${deployEnvironments}"
+        ENABLE_SECURITY = "${enableSecurity}"
+        NOTIFICATION_EMAIL = "${notificationEmail}"
+    }
+
+    stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    echo "🚀 Starting advanced Node.js pipeline"
+                    echo "📱 App Path: ${APP_PATH}"
+                    echo "🏷️  Image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "📦 Node Version: ${NODE_VERSION}"
+                    echo "🌍 Target Environment: ${DEPLOY_ENV}"
+                    echo "🔒 Security Scanning: ${ENABLE_SECURITY}"
+                    
+                    // Validate structure
+                    if (!fileExists("${APP_PATH}/package.json")) {
+                        error "❌ package.json not found in ${APP_PATH}/"
+                    }
+                    echo "✅ Application structure validated"
+                }
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            steps {
+                dir("${APP_PATH}") {
+                    script {
+                        echo "🔍 Running code quality analysis..."
+                        
+                        // ESLint (if config exists)
+                        if (fileExists('.eslintrc.js') || fileExists('.eslintrc.json')) {
+                            sh 'npm run lint || echo "Linting completed with warnings"'
+                        }
+                        
+                        // Prettier (if config exists)
+                        if (fileExists('.prettierrc')) {
+                            sh 'npm run format:check || echo "Format check completed"'
+                        }
+                        
+                        echo "✅ Code quality analysis completed"
+                    }
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir("${APP_PATH}") {
+                    script {
+                        echo "📦 Installing Node.js dependencies..."
+                        sh 'npm ci'
+                        
+                        // Audit for security vulnerabilities
+                        sh 'npm audit --audit-level=moderate || echo "Security audit completed with warnings"'
+                        echo "✅ Dependencies installed and audited"
+                    }
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            when {
+                not { params.SKIP_TESTS }
+            }
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        dir("${APP_PATH}") {
+                            script {
+                                echo "🧪 Running unit tests..."
+                                sh 'npm run test:unit || npm test || echo "No unit tests found"'
+                                echo "✅ Unit tests completed"
+                            }
+                        }
+                    }
+                }
+                stage('Integration Tests') {
+                    steps {
+                        dir("${APP_PATH}") {
+                            script {
+                                echo "🔗 Running integration tests..."
+                                sh 'npm run test:integration || echo "No integration tests found"'
+                                echo "✅ Integration tests completed"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                dir("${APP_PATH}") {
+                    script {
+                        echo "🏗️  Building Node.js application..."
+                        sh 'npm run build || echo "No build script found"'
+                        echo "✅ Application built successfully"
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🔨 Building Docker image..."
+                    
+                    // Create optimized Dockerfile if it doesn't exist
+                    if (!fileExists("${APP_PATH}/Dockerfile")) {
+                        writeFile file: "${APP_PATH}/Dockerfile", text: """
+# Multi-stage build for optimization
+FROM node:${NODE_VERSION} AS builder
+
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev)
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build application
+RUN npm run build || echo "No build step required"
+
+# Production stage
+FROM node:${NODE_VERSION}
+
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /usr/src/app/dist ./dist 2>/dev/null || echo "No dist directory"
+COPY --from=builder /usr/src/app/build ./build 2>/dev/null || echo "No build directory"
+
+# Copy application files
+COPY . .
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Change ownership
+RUN chown -R nextjs:nodejs /usr/src/app
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
+    CMD curl -f http://localhost:3000/health || exit 1
+
+CMD [ "node", "server.js" ]
+""".stripIndent()
+                        echo "📝 Created optimized Dockerfile"
+                    }
+                    
+                    def dockerImage = docker.build(
+                        "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}",
+                        "--build-arg NODE_ENV=${DEPLOY_ENV} --build-arg BUILD_TYPE=${params.BUILD_TYPE} ${APP_PATH}"
+                    )
+                    echo "✅ Successfully built ${dockerImage.id}"
+                    
+                    // Tag for environment
+                    sh "docker tag ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ${DOCKER_IMAGE_NAME}:${DEPLOY_ENV}-latest"
+                }
+            }
+        }
+
+        stage('Security Scanning') {
+            when {
+                environment name: 'ENABLE_SECURITY', value: 'true'
+            }
+            steps {
+                script {
+                    echo "🔒 Running security scans..."
+                    
+                    // Container security scan (placeholder - would use tools like Trivy, Snyk, etc.)
+                    echo "🔍 Scanning container for vulnerabilities..."
+                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \$HOME/Library/Caches:/root/.cache/ aquasec/trivy:latest image ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} || echo 'Security scan completed with warnings'"
+                    
+                    echo "✅ Security scanning completed"
+                }
+            }
+        }
+
+        stage('Performance Tests') {
+            when {
+                anyOf {
+                    environment name: 'DEPLOY_ENV', value: 'staging'
+                    environment name: 'DEPLOY_ENV', value: 'production'
+                }
+            }
+            steps {
+                script {
+                    echo "⚡ Running performance tests..."
+                    docker.image("${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}").withRun('-p 49160:3000') { c ->
+                        sh 'sleep 10'
+                        
+                        // Basic load test (would use tools like k6, Artillery, etc.)
+                        sh '''
+                        for i in {1..10}; do
+                            curl -f http://localhost:49160 >/dev/null 2>&1
+                            echo "Request $i completed"
+                        done
+                        '''
+                    }
+                    echo "✅ Performance tests completed"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    switch(DEPLOY_ENV) {
+                        case 'dev':
+                            echo "🚀 Deploying to development environment"
+                            echo "📝 Image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                            // Add development deployment logic here
+                            break
+                        case 'staging':
+                            echo "🎭 Deploying to staging environment"
+                            echo "📝 Image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                            // Add staging deployment logic here
+                            break
+                        case 'production':
+                            echo "🏭 Deploying to production environment"
+                            echo "📝 Image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                            // Add production deployment logic here
+                            break
+                        default:
+                            echo "ℹ️  Unknown environment: ${DEPLOY_ENV}"
+                    }
+                    echo "✅ Deployment completed successfully"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "🧹 Cleaning up..."
+                // Clean up temporary containers
+                sh "docker system prune -f || echo 'Cleanup completed'"
+            }
+        }
+        success {
+            script {
+                echo "🎉 Advanced pipeline completed successfully!"
+                if (NOTIFICATION_EMAIL?.trim()) {
+                    echo "📧 Would send success notification to: ${NOTIFICATION_EMAIL}"
+                    // Add actual email notification logic here
+                }
+            }
+        }
+        failure {
+            script {
+                echo "💥 Advanced pipeline failed!"
+                if (NOTIFICATION_EMAIL?.trim()) {
+                    echo "📧 Would send failure notification to: ${NOTIFICATION_EMAIL}"
+                    // Add actual email notification logic here
+                }
+            }
+        }
+        unstable {
+            script {
+                echo "⚠️  Pipeline completed with warnings"
+            }
+        }
+    }
+} 

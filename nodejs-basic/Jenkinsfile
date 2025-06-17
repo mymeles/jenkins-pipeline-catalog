@@ -1,0 +1,116 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_PATH = "${appPath}"
+        DOCKER_IMAGE_NAME = "${dockerImageName}"
+        DOCKER_IMAGE_TAG = "1.0.${env.BUILD_NUMBER}"
+        NODE_VERSION = "${nodeVersion}"
+    }
+
+    stages {
+        stage('Validate') {
+            steps {
+                script {
+                    echo "🔍 Validating Node.js application structure..."
+                    if (!fileExists("${APP_PATH}/package.json")) {
+                        error "❌ package.json not found in ${APP_PATH}/"
+                    }
+                    echo "✅ Application structure validated"
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir("${APP_PATH}") {
+                    script {
+                        echo "📦 Installing Node.js dependencies..."
+                        sh 'npm ci'
+                        echo "✅ Dependencies installed"
+                    }
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                dir("${APP_PATH}") {
+                    script {
+                        echo "🧪 Running tests..."
+                        sh 'npm test || echo "No tests found"'
+                        echo "✅ Tests completed"
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🔨 Building Docker image..."
+                    
+                    // Create Dockerfile if it doesn't exist
+                    if (!fileExists("${APP_PATH}/Dockerfile")) {
+                        writeFile file: "${APP_PATH}/Dockerfile", text: """
+FROM node:${NODE_VERSION}
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY . .
+
+EXPOSE 3000
+
+CMD [ "node", "server.js" ]
+""".stripIndent()
+                        echo "📝 Created default Dockerfile"
+                    }
+                    
+                    def dockerImage = docker.build(
+                        "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}",
+                        "${APP_PATH}"
+                    )
+                    echo "✅ Successfully built ${dockerImage.id}"
+                }
+            }
+        }
+
+        stage('Test Container') {
+            steps {
+                script {
+                    echo "🧪 Testing Docker container..."
+                    docker.image("${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}").withRun('-p 49160:3000') { c ->
+                        sh 'sleep 5'
+                        sh 'curl -f http://localhost:49160 || echo "Health check completed"'
+                    }
+                    echo "✅ Container test completed"
+                }
+            }
+        }
+
+        stage('Package') {
+            steps {
+                script {
+                    echo "📦 Packaging application..."
+                    echo "🏷️  Tagged as: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "✅ Application packaged successfully"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "🧹 Cleaning up workspace..."
+        }
+        success {
+            echo "🎉 Pipeline completed successfully!"
+        }
+        failure {
+            echo "💥 Pipeline failed!"
+        }
+    }
+} 

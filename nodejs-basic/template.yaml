@@ -1,0 +1,22 @@
+version: "1"
+type: pipeline-template
+templateType: Multibranch
+name: nodejs-basic
+displayName: Node.js Basic Pipeline
+description: Basic CI/CD pipeline for Node.js applications with Docker containerization
+parameters:
+  - name: appPath
+    displayName: Application Path
+    type: string
+    defaultValue: "."
+    description: Path to your Node.js application directory
+  - name: dockerImageName
+    displayName: Docker Image Name
+    type: string
+    defaultValue: "nodejs-app"
+    description: Name for the Docker image to be built
+  - name: nodeVersion
+    displayName: Node.js Version
+    type: string
+    defaultValue: "14-alpine"
+    description: Node.js version to use in Dockerfile 

@@ -1,0 +1,41 @@
+version: "1"
+type: pipeline-template
+templateType: Multibranch
+name: nodejs-advanced
+displayName: Node.js Advanced Pipeline
+description: Advanced CI/CD pipeline with security scanning, multi-environment support, and comprehensive testing
+parameters:
+  - name: appPath
+    displayName: Application Path
+    type: string
+    defaultValue: "."
+    description: Path to your Node.js application directory
+  - name: dockerImageName
+    displayName: Docker Image Name
+    type: string
+    defaultValue: "nodejs-app"
+    description: Name for the Docker image to be built
+  - name: nodeVersion
+    displayName: Node.js Version
+    type: string
+    defaultValue: "18-alpine"
+    description: Node.js version to use in Dockerfile
+  - name: enableSecurity
+    displayName: Enable Security Scanning
+    type: boolean
+    defaultValue: true
+    description: Enable security vulnerability scanning
+  - name: deployEnvironments
+    displayName: Deployment Environments
+    type: choice
+    choices:
+      - "dev"
+      - "staging" 
+      - "production"
+    defaultValue: "dev"
+    description: Target deployment environment
+  - name: notificationEmail
+    displayName: Notification Email
+    type: string
+    defaultValue: ""
+    description: Email address for build notifications (optional) 

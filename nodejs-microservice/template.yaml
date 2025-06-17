@@ -1,0 +1,42 @@
+version: "1"
+type: pipeline-template
+templateType: Multibranch
+name: nodejs-microservice
+displayName: Node.js Microservice Pipeline
+description: Specialized pipeline for Node.js microservices with health checks, service mesh integration, and Kubernetes deployment
+parameters:
+  - name: appPath
+    displayName: Application Path
+    type: string
+    defaultValue: "."
+    description: Path to your Node.js microservice directory
+  - name: serviceName
+    displayName: Service Name
+    type: string
+    defaultValue: "nodejs-service"
+    description: Name of the microservice
+  - name: containerRegistry
+    displayName: Container Registry
+    type: string
+    defaultValue: "localhost:5000"
+    description: Container registry URL
+  - name: kubernetesNamespace
+    displayName: Kubernetes Namespace
+    type: string
+    defaultValue: "default"
+    description: Target Kubernetes namespace
+  - name: replicas
+    displayName: Replica Count
+    type: string
+    defaultValue: "3"
+    description: Number of service replicas
+  - name: enableServiceMesh
+    displayName: Enable Service Mesh
+    type: boolean
+    defaultValue: true
+    description: Enable Istio service mesh integration
+  - name: enableMetrics
+    displayName: Enable Metrics
+    type: boolean
+    defaultValue: true
+    description: Enable Prometheus metrics collection 
