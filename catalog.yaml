@@ -1,0 +1,14 @@
+version: "1"
+type: pipeline-template
+name: Node.js Application Pipeline Catalog
+description: Reusable pipeline templates for Node.js applications with Docker containerization
+templates:
+  - name: nodejs-basic
+    displayName: Node.js Basic Pipeline
+    description: Basic CI/CD pipeline for Node.js applications
+  - name: nodejs-advanced
+    displayName: Node.js Advanced Pipeline
+    description: Advanced CI/CD pipeline with parameters, security scanning, and multi-environment support
+  - name: nodejs-microservice
+    displayName: Node.js Microservice Pipeline
+    description: Specialized pipeline for Node.js microservices with health checks and service mesh integration 
